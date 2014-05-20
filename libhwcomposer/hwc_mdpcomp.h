@@ -53,6 +53,7 @@ public:
     static bool init(hwc_context_t *ctx);
     static void resetIdleFallBack() { sIdleFallBack = false; }
     static void reset() { sHandleTimeout = false; };
+    static bool isIdleFallback() { return sIdleFallBack; }
 
 protected:
     enum { MAX_SEC_LAYERS = 1 }; //TODO add property support
@@ -131,8 +132,6 @@ protected:
     /* allocates pipe from pipe book */
     virtual bool allocLayerPipes(hwc_context_t *ctx,
                                  hwc_display_contents_1_t* list) = 0;
-    /* allocate MDP pipes from overlay */
-    ovutils::eDest getMdpPipe(hwc_context_t *ctx, ePipeType type, int mixer);
     /* configures MPD pipes */
     virtual int configure(hwc_context_t *ctx, hwc_layer_1_t *layer,
                           PipeLayerPair& pipeLayerPair) = 0;
@@ -212,9 +211,9 @@ protected:
             hwc_display_contents_1_t* list);
     void reset(hwc_context_t *ctx);
     bool isSupportedForMDPComp(hwc_context_t *ctx, hwc_layer_1_t* layer);
-    bool resourceCheck(hwc_context_t *ctx, hwc_display_contents_1_t *list);
-    hwc_rect_t getUpdatingFBRect(hwc_context_t *ctx,
-            hwc_display_contents_1_t* list);
+    bool resourceCheck();
+    hwc_rect_t getUpdatingFBRect(hwc_display_contents_1_t* list);
+    bool canDoPartialUpdate(hwc_context_t *ctx, hwc_display_contents_1_t* list);
 
     int mDpy;
     static bool sEnabled;
@@ -226,6 +225,7 @@ protected:
     /* Handles the timeout event from kernel, if the value is set to true */
     static bool sHandleTimeout;
     static int sMaxPipesPerMixer;
+    static bool sSrcSplitEnabled;
     static IdleInvalidator *idleInvalidator;
     struct FrameInfo mCurrentFrame;
     struct LayerCache mCachedFrame;
@@ -269,15 +269,16 @@ public:
     explicit MDPCompSplit(int dpy):MDPComp(dpy){};
     virtual ~MDPCompSplit(){};
     virtual bool draw(hwc_context_t *ctx, hwc_display_contents_1_t *list);
-private:
+
+protected:
     struct MdpPipeInfoSplit : public MdpPipeInfo {
         ovutils::eDest lIndex;
         ovutils::eDest rIndex;
         virtual ~MdpPipeInfoSplit() {};
     };
 
-    bool acquireMDPPipes(hwc_context_t *ctx, hwc_layer_1_t* layer,
-                         MdpPipeInfoSplit& pipe_info, ePipeType type);
+    virtual bool acquireMDPPipes(hwc_context_t *ctx, hwc_layer_1_t* layer,
+                         MdpPipeInfoSplit& pipe_info);
 
     /* configure's overlay pipes for the frame */
     virtual int configure(hwc_context_t *ctx, hwc_layer_1_t *layer,
@@ -287,6 +288,7 @@ private:
     virtual bool allocLayerPipes(hwc_context_t *ctx,
                                  hwc_display_contents_1_t* list);
 
+private:
     /* Increments mdpCount if 4k2k yuv layer split is enabled.
      * updates framebuffer z order if fb lies above source-split layer */
     virtual void adjustForSourceSplit(hwc_context_t *ctx,
@@ -295,6 +297,18 @@ private:
     /* configures 4kx2k yuv layer*/
     virtual int configure4k2kYuv(hwc_context_t *ctx, hwc_layer_1_t *layer,
             PipeLayerPair& PipeLayerPair);
+};
+
+class MDPCompSrcSplit : public MDPCompSplit {
+public:
+    explicit MDPCompSrcSplit(int dpy) : MDPCompSplit(dpy){};
+    virtual ~MDPCompSrcSplit(){};
+private:
+    virtual bool acquireMDPPipes(hwc_context_t *ctx, hwc_layer_1_t* layer,
+            MdpPipeInfoSplit& pipe_info);
+
+    virtual int configure(hwc_context_t *ctx, hwc_layer_1_t *layer,
+            PipeLayerPair& pipeLayerPair);
 };
 
 }; //namespace
